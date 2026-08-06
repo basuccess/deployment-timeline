@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Deployment Timeline: Fiber vs. ngFWA</title>
+<style>
+  :root{
+    --green:#34c759;
+    --green-dark:#1f9e45;
+    --blue:#7c9cf6;
+    --blue-strong:#5b7cf0;
+    --gray-zone:#d7d7dc;
+    --ink:#1d1d1f;
+    --muted:#6e6e73;
+    --line:#c9c9ce;
+    --bg:#ffffff;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    color:var(--ink);
+    background:var(--bg);
+  }
+  .wrap{max-width:860px;margin:0 auto;padding:28px 24px 40px}
+  h1{font-size:26px;font-weight:600;letter-spacing:-0.02em;margin:0 0 22px}
+  .chart{width:100%;height:auto;display:block}
+  .axis-label{font-size:12px;fill:var(--muted)}
+  .row-label{font-size:13px;fill:var(--ink);font-weight:500}
+  .bar-text{font-size:11px;fill:#fff;font-weight:600}
+  .mini-label{font-size:10px;fill:var(--ink);font-weight:600}
+  .zone-text{font-size:12px;fill:var(--muted);font-style:italic}
+  .start-text{font-size:12px;fill:var(--ink);font-weight:700}
+  .tick{stroke:var(--line);stroke-width:1}
+  .tick-num{font-size:12px;fill:var(--muted)}
+  .stats{
+    display:flex;justify-content:space-between;gap:8px;
+    border-top:1px solid #ececec;border-bottom:1px solid #ececec;
+    padding:18px 4px;margin:20px 0 8px;
+  }
+  .stat{flex:1;text-align:center;position:relative}
+  .stat + .stat::before{content:"";position:absolute;left:0;top:6px;bottom:6px;width:1px;background:#ececec}
+  .stat .k{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);font-weight:600}
+  .stat .v{font-size:20px;font-weight:700;margin-top:6px}
+  .controls{margin-top:22px;display:flex;flex-direction:column;gap:20px}
+  .ctrl{display:grid;grid-template-columns:220px 1fr auto;align-items:center;gap:16px}
+  .ctrl label{font-size:15px;color:var(--ink)}
+  input[type=range]{
+    -webkit-appearance:none;appearance:none;height:4px;border-radius:4px;
+    background:linear-gradient(var(--line),var(--line));width:100%;outline:none;
+  }
+  input[type=range]::-webkit-slider-thumb{
+    -webkit-appearance:none;width:22px;height:22px;border-radius:50%;
+    background:#111;cursor:pointer;border:none;
+  }
+  input[type=range]::-moz-range-thumb{width:22px;height:22px;border-radius:50%;background:#111;cursor:pointer;border:none}
+  .pill{min-width:64px;text-align:center;background:#f1f1f4;border-radius:10px;padding:10px 14px;font-weight:600}
+  select{
+    grid-column:2 / span 2;width:100%;padding:12px 14px;border:1px solid var(--line);
+    border-radius:10px;font-size:15px;background:#fff;color:var(--ink);
+  }
+  /* toggle */
+  .switch{position:relative;display:inline-block;width:46px;height:26px}
+  .switch input{opacity:0;width:0;height:0}
+  .slider-t{position:absolute;cursor:pointer;inset:0;background:#d7d7dc;border-radius:26px;transition:.2s}
+  .slider-t:before{content:"";position:absolute;height:20px;width:20px;left:3px;top:3px;background:#fff;border-radius:50%;transition:.2s;box-shadow:0 1px 3px rgba(0,0,0,.2)}
+  .switch input:checked + .slider-t{background:var(--green)}
+  .switch input:checked + .slider-t:before{transform:translateX(20px)}
+  @media(max-width:620px){
+    .ctrl{grid-template-columns:1fr auto}
+    .ctrl label{grid-column:1 / -1}
+    select{grid-column:1 / -1}
+    .stat .v{font-size:17px}
+    h1{font-size:21px}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Deployment Timeline: Fiber vs. ngFWA</h1>
+
+  <svg id="chart" class="chart" viewBox="0 0 820 300" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Deployment timeline comparison"></svg>
+
+  <div class="stats">
+    <div class="stat"><div class="k">Fiber Revenue Start</div><div class="v" id="stat-fiber">Month 20</div></div>
+    <div class="stat"><div class="k">ngFWA Revenue Start</div><div class="v" id="stat-ngfwa">Month 6</div></div>
+    <div class="stat"><div class="k">Lost Revenue Period</div><div class="v" id="stat-lost">14 Months</div></div>
+  </div>
+
+  <div class="controls">
+    <div class="ctrl">
+      <label for="delay">Permitting Delay (Months)</label>
+      <input type="range" id="delay" min="6" max="24" step="1" value="12">
+      <div class="pill" id="delay-val">12</div>
+    </div>
+    <div class="ctrl">
+      <label for="terrain">Complex Terrain / Env. Review</label>
+      <label class="switch"><input type="checkbox" id="terrain"><span class="slider-t"></span></label>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  // ---- Model ----------------------------------------------------------------
+  // ngFWA: ~5 months to install/activate, revenue starts at fixed month 6.
+  // Fiber: 2mo survey/design + permitting delay + 6mo construction.
+  //        Complex terrain / env review adds 6 months of permitting.
+  // Fiber revenue start = 2 + delay(+6 if terrain) + 6 = 8 + delay (+6).
+  const NGFWA_START = 6;      // green "Start Revenue" line / ngFWA revenue begins
+  const NGFWA_INSTALL = 5;   // green install blocks end
+  const SURVEY = 2;          // fiber survey/design
+  const CONSTRUCTION = 6;    // fiber construction
+  const TERRAIN_ADD = 6;     // extra permitting months when terrain is on
+  const MAX_MONTHS = 37;     // plotting scale (bars/markers can extend to here)
+  const AXIS_MAX = 35;       // grid + month labels stop here
+
+  // ---- Geometry -------------------------------------------------------------
+  const W = 820, H = 300;
+  const M = {l:70, r:40, t:20, b:70};
+  const plotW = W - M.l - M.r;
+  const x = m => M.l + (Math.min(m, MAX_MONTHS)/MAX_MONTHS)*plotW;
+  const ROW = {ngfwa: 70, fiber: 150};
+  const BAR_H = 34;
+
+  const svg = document.getElementById('chart');
+  const NS = "http://www.w3.org/2000/svg";
+  function el(name, attrs, text){
+    const e = document.createElementNS(NS, name);
+    for(const k in attrs) e.setAttribute(k, attrs[k]);
+    if(text!=null) e.textContent = text;
+    return e;
+  }
+
+  function draw(){
+    const delay = +document.getElementById('delay').value;
+    const terrain = document.getElementById('terrain').checked;
+
+    const permit = delay + (terrain ? TERRAIN_ADD : 0);
+    const fiberStart = SURVEY + permit + CONSTRUCTION;   // month fiber earns revenue
+    const lost = fiberStart - NGFWA_START;
+
+    // stats
+    document.getElementById('stat-fiber').textContent = 'Month ' + fiberStart;
+    document.getElementById('stat-ngfwa').textContent = 'Month ' + NGFWA_START;
+    document.getElementById('stat-lost').textContent = lost + ' Months';
+    document.getElementById('delay-val').textContent = delay;
+
+    // clear
+    while(svg.firstChild) svg.removeChild(svg.firstChild);
+
+    // axis grid ticks every 5 months, visible only through AXIS_MAX (month 30)
+    for(let m=0; m<=AXIS_MAX; m+=5){
+      svg.appendChild(el('line',{class:'tick', x1:x(m), y1:M.t, x2:x(m), y2:H-M.b}));
+      svg.appendChild(el('text',{class:'tick-num', x:x(m), y:H-M.b+18, 'text-anchor':'middle'}, m));
+    }
+    svg.appendChild(el('text',{class:'axis-label', x:M.l+plotW/2, y:H-M.b+42, 'text-anchor':'middle'}, 'Months from network Launch'));
+
+    // ---- ngFWA row (always shown) ----
+    svg.appendChild(el('text',{class:'row-label', x:M.l-12, y:ROW.ngfwa+BAR_H/2+4, 'text-anchor':'end'}, 'ngFWA'));
+    // three green deployment-phase blocks (0-5), labeled above each
+    [[0,'Survey'],[1.8,'Install'],[3.6,'Activate']].forEach(s=>{
+      const g=s[0];
+      svg.appendChild(el('rect',{x:x(g), y:ROW.ngfwa, width:x(g+1.4)-x(g), height:BAR_H, rx:4, fill:'var(--green)'}));
+      svg.appendChild(el('text',{class:'mini-label', x:(x(g)+x(g+1.4))/2, y:ROW.ngfwa-6, 'text-anchor':'middle'}, s[1]));
+    });
+    // gray Lost Revenue Zone bar, left edge set a small gap right of the green line
+    const GAP = 6;
+    const zx = x(NGFWA_START) + GAP, zw = x(fiberStart) - zx;
+    svg.appendChild(el('rect',{x:zx, y:ROW.ngfwa, width:zw, height:BAR_H, rx:4,
+      fill:'var(--gray-zone)', 'fill-opacity':0.55, stroke:'#c0392b', 'stroke-dasharray':'4 3', 'stroke-width':1}));
+    // vertical green Start Revenue line at month 5
+    svg.appendChild(el('line',{x1:x(NGFWA_START), y1:ROW.ngfwa-4, x2:x(NGFWA_START), y2:ROW.ngfwa+BAR_H+4, stroke:'var(--green-dark)', 'stroke-width':4}));
+    svg.appendChild(el('text',{class:'start-text', x:x(NGFWA_START)+GAP+4, y:ROW.ngfwa+BAR_H/2+4}, 'Start Revenue'));
+    svg.appendChild(el('text',{class:'zone-text', x:(zx+x(fiberStart))/2, y:ROW.ngfwa+BAR_H+20, 'text-anchor':'middle'}, 'Lost Revenue Zone'));
+
+    // ---- Fiber row (always shown) ----
+    svg.appendChild(el('text',{class:'row-label', x:M.l-12, y:ROW.fiber+BAR_H/2+4, 'text-anchor':'end'}, 'Fiber'));
+    // design / engineering block
+    svg.appendChild(el('rect',{x:x(0), y:ROW.fiber, width:x(SURVEY)-x(0), height:BAR_H, rx:4, fill:'var(--blue)'}));
+    svg.appendChild(el('text',{class:'bar-text', x:(x(0)+x(SURVEY))/2, y:ROW.fiber+BAR_H/2+4, 'text-anchor':'middle'}, 'Design'));
+    // permitting block
+    const p0=SURVEY, p1=SURVEY+permit;
+    svg.appendChild(el('rect',{x:x(p0), y:ROW.fiber, width:x(p1)-x(p0), height:BAR_H, rx:4, fill:'var(--blue-strong)'}));
+    svg.appendChild(el('text',{class:'bar-text', x:(x(p0)+x(p1))/2, y:ROW.fiber+BAR_H/2+4, 'text-anchor':'middle'}, 'Permitting'));
+    // construction block
+    const c0=p1, c1=p1+CONSTRUCTION;
+    svg.appendChild(el('rect',{x:x(c0), y:ROW.fiber, width:x(c1)-x(c0), height:BAR_H, rx:4, fill:'var(--blue)'}));
+    svg.appendChild(el('text',{class:'bar-text', x:(x(c0)+x(c1))/2, y:ROW.fiber+BAR_H/2+4, 'text-anchor':'middle'}, 'Construction'));
+    // start revenue marker (flip label inward when near the right edge)
+    const fsx = x(fiberStart);
+    const nearRight = fsx > (W - M.r - 95);
+    svg.appendChild(el('line',{x1:fsx, y1:ROW.fiber-4, x2:fsx, y2:ROW.fiber+BAR_H+4, stroke:'var(--green-dark)', 'stroke-width':4}));
+    svg.appendChild(el('text',{class:'start-text',
+      x: nearRight ? fsx-8 : fsx+8,
+      y: ROW.fiber+BAR_H/2+4,
+      'text-anchor': nearRight ? 'end' : 'start'}, 'Start Revenue'));
+  }
+
+  ['delay','terrain'].forEach(id=>{
+    document.getElementById(id).addEventListener('input', draw);
+    document.getElementById(id).addEventListener('change', draw);
+  });
+  draw();
+})();
+</script>
+</body>
+</html>
