@@ -77,4 +77,4 @@ inline CSS and JavaScript.
 
 ## License
 
-Internal / promotional use. Adjust as needed for your organization.
+Internal / promotional use.
